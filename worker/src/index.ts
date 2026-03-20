@@ -52,6 +52,13 @@ export default {
         const data = await resp.json();
         return jsonResponse(data);
       }
+      if (url.pathname === "/api/debug-brief" && request.method === "GET") {
+        const briefChunks = await fetchChunksByLabel("daily_brief", 5, env);
+        const fullText = briefChunks.map(c => c.content).join("\n");
+        const briefOnly = fullText.split(/--\s*SHEETS & REPORTS\s*--/i)[0];
+        const sections = parseBriefSections(briefOnly);
+        return jsonResponse({ chunk_count: briefChunks.length, text_length: fullText.length, sections_keys: { yesterday: Object.keys(sections.yesterday), "7d": Object.keys(sections["7d"]) }, line_sample: briefOnly.split("\n").slice(10, 20) });
+      }
       return new Response("Not found", { status: 404, headers: CORS_HEADERS });
     } catch (err) {
       const message = err instanceof Error ? err.message : String(err);
@@ -79,8 +86,14 @@ async function handleChat(request: Request, env: Env): Promise<Response> {
   // 1. Embed the question
   const embedding = await embed(question, env);
 
-  // 2. Retrieve relevant chunks
-  const chunks = await matchChunks(embedding, 10, null, env);
+  // 2. Retrieve relevant chunks — fetch more, then cap per document for diversity
+  const rawChunks = await matchChunks(embedding, 30, null, env);
+  const perDocCount: Record<string, number> = {};
+  const chunks = rawChunks.filter(c => {
+    const key = c.drive_file_id;
+    perDocCount[key] = (perDocCount[key] || 0) + 1;
+    return perDocCount[key] <= 3;
+  }).slice(0, 12);
 
   // 3. Build context
   const context = chunks
@@ -101,31 +114,47 @@ async function handleChat(request: Request, env: Env): Promise<Response> {
 // ---------------------------------------------------------------------------
 
 async function handleBrief(env: Env): Promise<Response> {
-  // Fetch chunks directly by folder label — no embedding needed
   const [metaChunks, briefChunks] = await Promise.all([
     fetchChunksByLabel("snapshots", 5, env),
     fetchChunksByLabel("daily_brief", 5, env),
   ]);
 
-  let metaData: Record<string, string> = {};
-  let shopifyData: Record<string, string> = {};
-
-  // meta_ads.json is chunked — parse key metrics from text across all chunks
+  // Meta: parse key metrics from all snapshot chunks
   const metaText = metaChunks.map(c => c.content).join("\n");
-  metaData = parseBriefText(metaText);
+  const metaData = parseKVLines(metaText);
 
-  for (const chunk of briefChunks) {
-    const parsed = parseBriefText(chunk.content);
-    if (Object.keys(parsed).length > 2) {
-      shopifyData = { ...shopifyData, ...parsed };
-    }
-  }
+  // Shopify: reconstruct full brief text, stop at SHEETS & REPORTS section
+  const fullBrief = briefChunks.map(c => c.content).join("\n");
+  const briefOnly = fullBrief.split(/--\s*SHEETS & REPORTS\s*--/i)[0];
+  const shopify = parseBriefSections(briefOnly);
 
-  return jsonResponse({ shopify: shopifyData, meta: metaData, updated: new Date().toISOString() });
+  return jsonResponse({ shopify, meta: metaData, updated: new Date().toISOString() });
 }
 
-// Parse key: value lines from the daily brief text
-function parseBriefText(text: string): Record<string, string> {
+// Parse the daily brief into sections: yesterday, 7d, 30d
+function parseBriefSections(text: string): Record<string, Record<string, string>> {
+  const sections: Record<string, Record<string, string>> = { yesterday: {}, "7d": {}, "30d": {} };
+  let current: string | null = null;
+
+  for (const line of text.split("\n")) {
+    if (/--\s*Yesterday\s*--/i.test(line))      { current = "yesterday"; continue; }
+    if (/--\s*Last 7 days?\s*--/i.test(line))   { current = "7d"; continue; }
+    if (/--\s*Last 30 days?\s*--/i.test(line))  { current = "30d"; continue; }
+    if (/^--/.test(line.trim()))                { current = null; continue; }
+    if (!current) continue;
+
+    const match = line.match(/^\s*([^:|\n]+?)\s*:\s*(.+?)\s*$/);
+    if (match) {
+      const key = match[1].trim();
+      const value = match[2].trim();
+      if (key && value) sections[current][key] = value;
+    }
+  }
+  return sections;
+}
+
+// Parse key: value lines (used for meta JSON chunks)
+function parseKVLines(text: string): Record<string, string> {
   const result: Record<string, string> = {};
   for (const line of text.split("\n")) {
     const match = line.match(/^\s*"?([^":{}[\]]+)"?\s*:\s*"?([^"{}\[\]\n]+?)"?,?\s*$/);
@@ -145,14 +174,19 @@ function parseBriefText(text: string): Record<string, string> {
 // ---------------------------------------------------------------------------
 
 async function fetchChunksByLabel(label: string, count: number, env: Env): Promise<Chunk[]> {
-  // Get document IDs for this label (folder_label is a real column on ghf_documents)
   const docsResp = await fetch(
     `${env.SUPABASE_URL}/rest/v1/ghf_documents?select=drive_file_id&folder_label=eq.${encodeURIComponent(label)}`,
     { headers: { apikey: env.SUPABASE_SERVICE_KEY, Authorization: `Bearer ${env.SUPABASE_SERVICE_KEY}` } }
   );
-  if (!docsResp.ok) return [];
+  if (!docsResp.ok) {
+    console.error(`fetchChunksByLabel docs query failed: ${docsResp.status} ${await docsResp.text()}`);
+    return [];
+  }
   const docs: { drive_file_id: string }[] = await docsResp.json();
-  if (!docs.length) return [];
+  if (!docs.length) {
+    console.error(`fetchChunksByLabel: no documents found for label=${label}`);
+    return [];
+  }
 
   const ids = docs.map(d => `"${d.drive_file_id}"`).join(",");
   const chunksResp = await fetch(

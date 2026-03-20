@@ -33,7 +33,8 @@ async function loadBrief() {
     const resp = await fetch(`${WORKER_URL}/api/brief`);
     if (!resp.ok) throw new Error(`HTTP ${resp.status}`);
     const data = await resp.json();
-    renderShopifyMetrics(data.shopify || {});
+    const shopify = data.shopify || {};
+    renderShopifyMetrics(shopify.yesterday || {}, shopify["7d"] || {});
     renderMetaMetrics(data.meta || {});
     setStatus("live");
 
@@ -43,6 +44,7 @@ async function loadBrief() {
     console.error("Brief load failed:", e);
     setStatus("error");
     renderFallback("shopify-metrics", "Could not load Shopify data");
+    renderFallback("shopify-7d-metrics", "");
     renderFallback("meta-metrics", "Could not load Meta data");
     renderFallback("meta-7d-metrics", "");
   }
@@ -59,40 +61,28 @@ function kpiCard(label, value, delta) {
   </div>`;
 }
 
-function renderShopifyMetrics(data) {
-  const el = document.getElementById("shopify-metrics");
-  if (!el) return;
+function renderShopifyMetrics(yd, sevenD) {
+  const el  = document.getElementById("shopify-metrics");
+  const el7 = document.getElementById("shopify-7d-metrics");
 
-  const revenue = data["Order Revenue"];
-  const orders = data["Orders"];
-  let aov = null;
-  if (revenue && orders) {
-    const revNum = parseFloat(revenue.replace(/[^0-9.]/g, ''));
-    const ordNum = parseFloat(orders.replace(/[^0-9.]/g, ''));
-    if (!isNaN(revNum) && !isNaN(ordNum) && ordNum > 0) {
-      aov = '$' + (revNum / ordNum).toFixed(2);
-    }
+  function buildCards(data) {
+    const metrics = [
+      { label: "Revenue",     key: "Order Revenue" },
+      { label: "Gross Sales", key: "Gross Sales" },
+      { label: "Orders",      key: "Orders" },
+      { label: "Memberships", key: "Membership renewals" },
+      { label: "Discounts",   key: "Discounts" },
+      { label: "Returns",     key: "(-) Returns" },
+    ];
+    return metrics
+      .map(m => data[m.key] ? kpiCard(m.label, data[m.key]) : null)
+      .filter(Boolean)
+      .slice(0, 6)
+      .join("");
   }
 
-  const metrics = [
-    { label: "Order Revenue",  key: "Order Revenue" },
-    { label: "Gross Sales",    key: "Gross Sales" },
-    { label: "Orders",         key: "Orders" },
-    { label: "AOV",            value: aov },
-    { label: "Discounts",      key: "Discounts" },
-    { label: "Memberships",    key: "Membership renewals" },
-  ];
-
-  const cards = metrics
-    .map(m => {
-      const val = m.value !== undefined ? m.value : (m.key ? data[m.key] : null);
-      if (!val) return null;
-      return kpiCard(m.label, val);
-    })
-    .filter(Boolean)
-    .slice(0, 6);
-
-  el.innerHTML = cards.join("") || `<div class="kpi-error">⚠ No Shopify data</div>`;
+  if (el) el.innerHTML = buildCards(yd) || `<div class="kpi-error">⚠ No Shopify data</div>`;
+  if (el7) el7.innerHTML = buildCards(sevenD) || `<div class="kpi-error">⚠ No 7-day data</div>`;
 }
 
 function renderMetaMetrics(data) {
