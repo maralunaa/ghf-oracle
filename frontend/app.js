@@ -1,7 +1,7 @@
 // GHF Oracle — frontend app
 // Replace WORKER_URL after deploying the Cloudflare Worker
 
-const WORKER_URL = "https://ghf-oracle.workers.dev"; // update after wrangler deploy
+const WORKER_URL = "https://ghf-oracle.mara-9ba.workers.dev";
 
 const conversationHistory = [];
 
