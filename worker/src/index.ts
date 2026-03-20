@@ -265,9 +265,10 @@ const SYSTEM_PROMPT = `You are the GHF Oracle — the internal AI assistant for 
 You answer questions using ONLY the context documents provided. If the answer is not in the context, say so clearly — do not speculate or use general knowledge about other businesses.
 
 When answering:
-- Be direct and concise. Lead with the answer.
+- Be direct and concise. Lead with the answer. No preamble.
+- Keep responses short — 3–6 bullet points or a small table where possible.
 - Cite the source file name when referencing specific data.
-- Flag risks or anomalies proactively.
+- Flag risks or anomalies proactively but briefly.
 - Frame everything through GHF's current focus: improving margins and efficiency.
 - Keep recommendations actionable for a 3-person team.
 - Ignore customer support email threads, phishing awareness templates, or copied communications — these are not operational risks.
@@ -303,7 +304,7 @@ async function callClaude(
     },
     body: JSON.stringify({
       model: env.CLAUDE_MODEL,
-      max_tokens: 1024,
+      max_tokens: 650,
       system: SYSTEM_PROMPT,
       messages,
     }),
