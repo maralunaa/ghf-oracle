@@ -128,7 +128,7 @@ async function handleBrief(env: Env): Promise<Response> {
 function parseBriefText(text: string): Record<string, string> {
   const result: Record<string, string> = {};
   for (const line of text.split("\n")) {
-    const match = line.match(/^"?([^":{}[\]]+)"?\s*:\s*"?([^"{}\[\]\n]+?)"?,?\s*$/);
+    const match = line.match(/^\s*"?([^":{}[\]]+)"?\s*:\s*"?([^"{}\[\]\n]+?)"?,?\s*$/);
     if (match) {
       const key = match[1].trim().replace(/^"|"$/g, "");
       const value = match[2].trim().replace(/^"|"$/g, "").replace(/,$/, "").trim();
