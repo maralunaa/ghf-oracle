@@ -97,25 +97,31 @@ async function handleChat(request: Request, env: Env): Promise<Response> {
   // 1. Embed the question
   const embedding = await embed(question, env);
 
-  // 2. Retrieve relevant chunks — fetch more, then cap per document for diversity
-  const [rawChunks, briefChunks] = await Promise.all([
+  // 2. Retrieve relevant chunks
+  // - Always pin the daily brief (current metrics)
+  // - Always fetch all report chunks (only ~200 chunks total — vector search
+  //   doesn't work well for date/metric queries across dense numeric data)
+  // - Vector search for everything else
+  const [rawChunks, briefChunks, reportChunks] = await Promise.all([
     matchChunks(embedding, 50, null, env),
     fetchChunksByLabel("daily_brief", 3, env),
+    fetchChunksByLabel("reports", 250, env),
   ]);
 
-  // Cap per document: allow more chunks from reports (large analytical sheet)
-  // to avoid truncating multi-row metrics like cancellation rate, cull rate, etc.
-  const briefIds = new Set(briefChunks.map(c => c.drive_file_id));
+  // From vector search: exclude brief + report chunks (already fetched above), cap 3 per doc
+  const pinnedIds = new Set([
+    ...briefChunks.map(c => c.drive_file_id),
+    ...reportChunks.map(c => c.drive_file_id),
+  ]);
   const perDocCount: Record<string, number> = {};
-  const retrievedChunks = rawChunks.filter(c => {
-    if (briefIds.has(c.drive_file_id)) return false; // don't double-count brief
-    const cap = c.metadata.folder_label === "reports" ? 6 : 3;
+  const otherChunks = rawChunks.filter(c => {
+    if (pinnedIds.has(c.drive_file_id)) return false;
     perDocCount[c.drive_file_id] = (perDocCount[c.drive_file_id] || 0) + 1;
-    return perDocCount[c.drive_file_id] <= cap;
-  }).slice(0, 15);
+    return perDocCount[c.drive_file_id] <= 3;
+  }).slice(0, 8);
 
-  // Always pin the daily brief first so Claude always has current metrics
-  const chunks = [...briefChunks, ...retrievedChunks];
+  // Order: brief first (current data), then reports (historical), then other sources
+  const chunks = [...briefChunks, ...reportChunks, ...otherChunks];
 
   // 3. Build context
   const context = chunks
@@ -315,7 +321,7 @@ async function callClaude(
     },
     body: JSON.stringify({
       model: env.CLAUDE_MODEL,
-      max_tokens: 650,
+      max_tokens: 800,
       system: SYSTEM_PROMPT,
       messages,
     }),
