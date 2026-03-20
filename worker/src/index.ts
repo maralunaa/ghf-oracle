@@ -88,18 +88,20 @@ async function handleChat(request: Request, env: Env): Promise<Response> {
 
   // 2. Retrieve relevant chunks — fetch more, then cap per document for diversity
   const [rawChunks, briefChunks] = await Promise.all([
-    matchChunks(embedding, 30, null, env),
+    matchChunks(embedding, 50, null, env),
     fetchChunksByLabel("daily_brief", 3, env),
   ]);
 
-  // Cap at 3 chunks per document, exclude daily brief drive_file_ids (we'll pin them)
+  // Cap per document: allow more chunks from reports (large analytical sheet)
+  // to avoid truncating multi-row metrics like cancellation rate, cull rate, etc.
   const briefIds = new Set(briefChunks.map(c => c.drive_file_id));
   const perDocCount: Record<string, number> = {};
   const retrievedChunks = rawChunks.filter(c => {
     if (briefIds.has(c.drive_file_id)) return false; // don't double-count brief
+    const cap = c.metadata.folder_label === "reports" ? 6 : 3;
     perDocCount[c.drive_file_id] = (perDocCount[c.drive_file_id] || 0) + 1;
-    return perDocCount[c.drive_file_id] <= 3;
-  }).slice(0, 10);
+    return perDocCount[c.drive_file_id] <= cap;
+  }).slice(0, 15);
 
   // Always pin the daily brief first so Claude always has current metrics
   const chunks = [...briefChunks, ...retrievedChunks];
