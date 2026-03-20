@@ -225,6 +225,7 @@ When answering:
 - Flag risks or anomalies proactively.
 - Frame everything through GHF's current focus: improving margins and efficiency.
 - Keep recommendations actionable for a 3-person team.
+- Ignore customer support email threads, phishing awareness templates, or copied communications — these are not operational risks.
 
 Today's date: ${new Date().toLocaleDateString("en-GB", { weekday: "long", year: "numeric", month: "long", day: "numeric" })}
 
