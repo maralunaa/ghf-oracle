@@ -38,14 +38,26 @@ export default {
 
     const url = new URL(request.url);
 
-    if (url.pathname === "/api/chat" && request.method === "POST") {
-      return handleChat(request, env);
+    try {
+      if (url.pathname === "/api/chat" && request.method === "POST") {
+        return await handleChat(request, env);
+      }
+      if (url.pathname === "/api/brief" && request.method === "GET") {
+        return await handleBrief(env);
+      }
+      if (url.pathname === "/api/debug" && request.method === "GET") {
+        const resp = await fetch(`${env.SUPABASE_URL}/rest/v1/ghf_documents?select=file_name,folder_label,chunk_count`, {
+          headers: { apikey: env.SUPABASE_SERVICE_KEY, Authorization: `Bearer ${env.SUPABASE_SERVICE_KEY}` },
+        });
+        const data = await resp.json();
+        return jsonResponse(data);
+      }
+      return new Response("Not found", { status: 404, headers: CORS_HEADERS });
+    } catch (err) {
+      const message = err instanceof Error ? err.message : String(err);
+      console.error("Worker error:", message);
+      return errorResponse(`Internal error: ${message}`, 500);
     }
-    if (url.pathname === "/api/brief" && request.method === "GET") {
-      return handleBrief(env);
-    }
-
-    return new Response("Not found", { status: 404, headers: CORS_HEADERS });
   },
 };
 
@@ -76,12 +88,12 @@ async function handleChat(request: Request, env: Env): Promise<Response> {
     .join("\n\n---\n\n");
 
   // 4. Call Claude
-  const answer = await callClaude(question, context, history, env);
+  const { answer, followUps } = await callClaude(question, context, history, env);
 
   // 5. Unique source file names
   const sources = [...new Set(chunks.map((c) => c.metadata.file_name))];
 
-  return jsonResponse({ answer, sources });
+  return jsonResponse({ answer, sources, followUps });
 }
 
 // ---------------------------------------------------------------------------
@@ -89,54 +101,67 @@ async function handleChat(request: Request, env: Env): Promise<Response> {
 // ---------------------------------------------------------------------------
 
 async function handleBrief(env: Env): Promise<Response> {
-  // Pull the most recent snapshot JSON chunks (label = snapshots)
-  const embedding = await embed("daily brief shopify meta ads revenue ROAS spend orders", env);
-  const chunks = await matchChunks(embedding, 5, "snapshots", env);
+  // Fetch chunks directly by folder label — no embedding needed
+  const [metaChunks, briefChunks] = await Promise.all([
+    fetchChunksByLabel("snapshots", 5, env),
+    fetchChunksByLabel("daily_brief", 5, env),
+  ]);
 
-  // Find the meta_ads.json chunk if present
   let metaData: Record<string, string> = {};
   let shopifyData: Record<string, string> = {};
 
-  for (const chunk of chunks) {
-    try {
-      const parsed = JSON.parse(chunk.content);
-      if (parsed.tool === "Meta Ads" && parsed.data) {
-        metaData = parsed.data;
-      }
-    } catch {
-      // not JSON — might be daily brief text
-      if (chunk.metadata.folder_label === "daily_brief") {
-        shopifyData = parseBriefText(chunk.content);
-      }
+  // meta_ads.json is chunked — parse key metrics from text across all chunks
+  const metaText = metaChunks.map(c => c.content).join("\n");
+  metaData = parseBriefText(metaText);
+
+  for (const chunk of briefChunks) {
+    const parsed = parseBriefText(chunk.content);
+    if (Object.keys(parsed).length > 2) {
+      shopifyData = { ...shopifyData, ...parsed };
     }
   }
 
-  // Also try to get daily brief text chunks directly
-  if (Object.keys(shopifyData).length === 0) {
-    const briefEmbedding = await embed("gross sales order revenue discounts returns membership", env);
-    const briefChunks = await matchChunks(briefEmbedding, 5, "daily_brief", env);
-    for (const chunk of briefChunks) {
-      const parsed = parseBriefText(chunk.content);
-      if (Object.keys(parsed).length > 0) {
-        shopifyData = { ...shopifyData, ...parsed };
-        break;
-      }
-    }
-  }
-
-  return jsonResponse({ shopify: shopifyData, meta: metaData });
+  return jsonResponse({ shopify: shopifyData, meta: metaData, updated: new Date().toISOString() });
 }
 
 // Parse key: value lines from the daily brief text
 function parseBriefText(text: string): Record<string, string> {
   const result: Record<string, string> = {};
   for (const line of text.split("\n")) {
-    const match = line.match(/^([^:]+):\s+(.+)$/);
+    const match = line.match(/^"?([^":{}[\]]+)"?\s*:\s*"?([^"{}\[\]\n]+?)"?,?\s*$/);
     if (match) {
-      result[match[1].trim()] = match[2].trim();
+      const key = match[1].trim().replace(/^"|"$/g, "");
+      const value = match[2].trim().replace(/^"|"$/g, "").replace(/,$/, "").trim();
+      if (key && value && !key.startsWith("//") && value !== "{" && value !== "}") {
+        result[key] = value;
+      }
     }
   }
   return result;
+}
+
+// ---------------------------------------------------------------------------
+// Direct Supabase chunk fetch by label
+// ---------------------------------------------------------------------------
+
+async function fetchChunksByLabel(label: string, count: number, env: Env): Promise<Chunk[]> {
+  // Get document IDs for this label (folder_label is a real column on ghf_documents)
+  const docsResp = await fetch(
+    `${env.SUPABASE_URL}/rest/v1/ghf_documents?select=drive_file_id&folder_label=eq.${encodeURIComponent(label)}`,
+    { headers: { apikey: env.SUPABASE_SERVICE_KEY, Authorization: `Bearer ${env.SUPABASE_SERVICE_KEY}` } }
+  );
+  if (!docsResp.ok) return [];
+  const docs: { drive_file_id: string }[] = await docsResp.json();
+  if (!docs.length) return [];
+
+  const ids = docs.map(d => `"${d.drive_file_id}"`).join(",");
+  const chunksResp = await fetch(
+    `${env.SUPABASE_URL}/rest/v1/ghf_chunks?select=id,drive_file_id,content,metadata&drive_file_id=in.(${ids})&limit=${count}&order=chunk_index.asc`,
+    { headers: { apikey: env.SUPABASE_SERVICE_KEY, Authorization: `Bearer ${env.SUPABASE_SERVICE_KEY}` } }
+  );
+  if (!chunksResp.ok) return [];
+  const rows: { id: string; drive_file_id: string; content: string; metadata: Chunk["metadata"] }[] = await chunksResp.json();
+  return rows.map(r => ({ ...r, similarity: 1 }));
 }
 
 // ---------------------------------------------------------------------------
@@ -201,14 +226,18 @@ When answering:
 - Frame everything through GHF's current focus: improving margins and efficiency.
 - Keep recommendations actionable for a 3-person team.
 
-Today's date: ${new Date().toLocaleDateString("en-GB", { weekday: "long", year: "numeric", month: "long", day: "numeric" })}`;
+Today's date: ${new Date().toLocaleDateString("en-GB", { weekday: "long", year: "numeric", month: "long", day: "numeric" })}
+
+At the end of every response, on a new line, write exactly:
+FOLLOW-UP: [question 1] | [question 2] | [question 3]
+These should be short, specific follow-up questions relevant to what was just discussed.`;
 
 async function callClaude(
   question: string,
   context: string,
   history: ChatMessage[],
   env: Env
-): Promise<string> {
+): Promise<{ answer: string; followUps: string[] }> {
   const messages = [
     ...history,
     {
@@ -232,9 +261,23 @@ async function callClaude(
     }),
   });
 
-  if (!resp.ok) throw new Error(`Claude API failed: ${resp.status}`);
+  if (!resp.ok) {
+    const body = await resp.text();
+    throw new Error(`Claude API failed: ${resp.status} — ${body}`);
+  }
   const data: { content: { text: string }[] } = await resp.json();
-  return data.content[0].text;
+  const responseText = data.content[0].text;
+
+  let answer = responseText;
+  let followUps: string[] = [];
+
+  if (responseText.includes("FOLLOW-UP:")) {
+    const parts = responseText.split("FOLLOW-UP:");
+    answer = parts[0].trim();
+    followUps = parts[1].split("|").map(q => q.trim()).filter(q => q.length > 0);
+  }
+
+  return { answer, followUps };
 }
 
 // ---------------------------------------------------------------------------

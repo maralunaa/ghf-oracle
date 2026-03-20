@@ -37,10 +37,8 @@ async function loadBrief() {
     renderMetaMetrics(data.meta || {});
     setStatus("live");
 
-    const updated = document.getElementById("brief-updated");
-    if (updated) {
-      updated.textContent = `Updated ${new Date().toLocaleTimeString("en-GB", { hour: "2-digit", minute: "2-digit" })}`;
-    }
+    document.getElementById('freshness').textContent = 'Updated ' + new Date().toLocaleTimeString('en-GB', {hour:'2-digit',minute:'2-digit'});
+    document.getElementById('sync-status').textContent = 'Data as of ' + new Date().toLocaleDateString('en-GB', {weekday:'short',day:'numeric',month:'short'});
   } catch (e) {
     console.error("Brief load failed:", e);
     setStatus("error");
@@ -50,25 +48,51 @@ async function loadBrief() {
   }
 }
 
+function kpiCard(label, value, delta) {
+  const deltaHtml = delta
+    ? `<div class="kpi-delta ${delta.startsWith('+') ? 'up' : delta.startsWith('-') ? 'down' : ''}">${delta}</div>`
+    : '';
+  return `<div class="kpi-card">
+    <div class="kpi-label">${label}</div>
+    <div class="kpi-value">${value}</div>
+    ${deltaHtml}
+  </div>`;
+}
+
 function renderShopifyMetrics(data) {
   const el = document.getElementById("shopify-metrics");
   if (!el) return;
+
+  const revenue = data["Order Revenue"];
+  const orders = data["Orders"];
+  let aov = null;
+  if (revenue && orders) {
+    const revNum = parseFloat(revenue.replace(/[^0-9.]/g, ''));
+    const ordNum = parseFloat(orders.replace(/[^0-9.]/g, ''));
+    if (!isNaN(revNum) && !isNaN(ordNum) && ordNum > 0) {
+      aov = '$' + (revNum / ordNum).toFixed(2);
+    }
+  }
 
   const metrics = [
     { label: "Order Revenue",  key: "Order Revenue" },
     { label: "Gross Sales",    key: "Gross Sales" },
     { label: "Orders",         key: "Orders" },
+    { label: "AOV",            value: aov },
     { label: "Discounts",      key: "Discounts" },
-    { label: "Returns",        key: "(-) Returns" },
     { label: "Memberships",    key: "Membership renewals" },
-    { label: "New Customers",  key: "New" },
   ];
 
-  el.innerHTML = metrics
-    .filter(m => data[m.key])
-    .slice(0, 6)
-    .map(m => metricCard(m.label, data[m.key]))
-    .join("");
+  const cards = metrics
+    .map(m => {
+      const val = m.value !== undefined ? m.value : (m.key ? data[m.key] : null);
+      if (!val) return null;
+      return kpiCard(m.label, val);
+    })
+    .filter(Boolean)
+    .slice(0, 6);
+
+  el.innerHTML = cards.join("") || `<div class="kpi-error">⚠ No Shopify data</div>`;
 }
 
 function renderMetaMetrics(data) {
@@ -85,37 +109,32 @@ function renderMetaMetrics(data) {
   ];
 
   const sevenDay = [
-    { label: "Spend 7d",  key: "Spend (7d)" },
-    { label: "ROAS 7d",   key: "ROAS (7d)" },
-    { label: "CPA 7d",    key: "CPA (7d)" },
-    { label: "Purchases", key: "Purchases (7d)" },
+    { label: "Spend 7d",    key: "Spend (7d)" },
+    { label: "ROAS 7d",     key: "ROAS (7d)" },
+    { label: "CPA 7d",      key: "CPA (7d)" },
+    { label: "Purchases 7d",key: "Purchases (7d)" },
   ];
 
-  el1.innerHTML = yesterday
+  const ydCards = yesterday
     .filter(m => data[m.key])
-    .map(m => metricCard(m.label, data[m.key]))
-    .join("") || "<p style='color:var(--text-muted);font-size:12px'>No data</p>";
+    .map(m => kpiCard(m.label, data[m.key]));
 
-  el7.innerHTML = sevenDay
+  el1.innerHTML = ydCards.join("") || `<div class="kpi-error">⚠ No Meta data</div>`;
+
+  const sdCards = sevenDay
     .filter(m => data[m.key])
-    .map(m => metricCard(m.label, data[m.key]))
-    .join("") || "<p style='color:var(--text-muted);font-size:12px'>No data</p>";
-}
+    .map(m => kpiCard(m.label, data[m.key]));
 
-function metricCard(label, value) {
-  return `
-    <div class="metric-card">
-      <div class="label">${label}</div>
-      <div class="value">${value}</div>
-    </div>`;
+  el7.innerHTML = sdCards.join("") || `<div class="kpi-error">⚠ No 7-day Meta data</div>`;
 }
 
 function renderFallback(id, message) {
   const el = document.getElementById(id);
-  if (el && message) {
-    el.innerHTML = `<p style="color:var(--text-muted);font-size:12px">${message}</p>`;
-  } else if (el) {
-    el.innerHTML = "";
+  if (!el) return;
+  if (message) {
+    el.innerHTML = `<div class="kpi-error">⚠ ${message}</div>`;
+  } else {
+    el.innerHTML = '';
   }
 }
 
@@ -123,9 +142,9 @@ function setStatus(state) {
   const dot  = document.getElementById("status-dot");
   const text = document.getElementById("status-text");
   if (!dot || !text) return;
-  if (state === "live")    { dot.className = "status live"; text.textContent = "Live"; }
-  if (state === "loading") { dot.className = "status";      text.textContent = "Loading..."; }
-  if (state === "error")   { dot.className = "status";      text.textContent = "Offline"; }
+  if (state === "live")    { dot.className = "status-dot live";    text.textContent = "Live"; }
+  if (state === "loading") { dot.className = "status-dot loading"; text.textContent = "Loading..."; }
+  if (state === "error")   { dot.className = "status-dot error";   text.textContent = "Offline"; }
 }
 
 // ---------------------------------------------------------------------------
@@ -140,6 +159,10 @@ async function sendMessage() {
   // Hide suggestions after first message
   const suggestions = document.getElementById("suggestions");
   if (suggestions) suggestions.style.display = "none";
+
+  // Clear follow-ups
+  const followUpsEl = document.getElementById("follow-ups");
+  if (followUpsEl) followUpsEl.innerHTML = '';
 
   appendMessage("user", question);
   input.value = "";
@@ -162,6 +185,10 @@ async function sendMessage() {
 
     removeThinking(thinkingId);
     appendMessage("assistant", data.answer, data.sources);
+
+    if (data.followUps && data.followUps.length > 0) {
+      renderFollowUps(data.followUps);
+    }
 
     conversationHistory.push({ role: "user",      content: question });
     conversationHistory.push({ role: "assistant",  content: data.answer });
@@ -186,7 +213,7 @@ function appendMessage(role, content, sources) {
 
   let html = `<div class="message-content">${escapeHtml(content)}</div>`;
   if (sources && sources.length > 0) {
-    html += `<div class="message-sources">Sources: ${sources.join(", ")}</div>`;
+    html += `<div class="message-sources">${sources.map(s => `<span class="source-pill">${s}</span>`).join('')}</div>`;
   }
 
   div.innerHTML = html;
@@ -210,6 +237,21 @@ function appendThinking() {
 function removeThinking(id) {
   const el = document.getElementById(id);
   if (el) el.remove();
+}
+
+function renderFollowUps(questions) {
+  const container = document.getElementById('follow-ups');
+  if (!container) return;
+  container.innerHTML = questions.map(q =>
+    `<button class="follow-up-btn" onclick="askFollowUp(this)">${escapeHtml(q)}</button>`
+  ).join('');
+}
+
+function askFollowUp(btn) {
+  const input = document.getElementById('question-input');
+  input.value = btn.textContent;
+  document.getElementById('follow-ups').innerHTML = '';
+  sendMessage();
 }
 
 function askSuggestion(btn) {

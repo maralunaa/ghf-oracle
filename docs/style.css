@@ -60,8 +60,10 @@ html, body {
 
 .header-right { display: flex; align-items: center; gap: 8px; }
 
-.status { font-size: 10px; color: var(--text-dim); }
-.status.live { color: var(--green); }
+.status-dot { font-size: 10px; color: var(--text-dim); }
+.status-dot.live { color: var(--green); }
+.status-dot.loading { color: var(--text-dim); }
+.status-dot.error { color: var(--yellow); }
 .status-text { font-size: 12px; color: var(--text-muted); }
 
 .main {
@@ -81,63 +83,99 @@ html, body {
   gap: 24px;
 }
 
-.metric-section h3 {
-  font-size: 11px;
-  font-weight: 600;
-  text-transform: uppercase;
-  letter-spacing: 0.6px;
-  color: var(--text-muted);
-  margin-bottom: 12px;
-}
-
-.metric-grid {
-  display: grid;
-  grid-template-columns: 1fr 1fr;
+.panel-section {
+  display: flex;
+  flex-direction: column;
   gap: 8px;
 }
 
-.metric-card {
+.section-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+}
+
+.section-title {
+  font-size: 10px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.8px;
+  color: var(--text-dim);
+}
+
+.kpi-grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 6px;
+}
+
+.kpi-card {
   background: var(--bg-card);
   border: 1px solid var(--border);
   border-radius: var(--radius);
-  padding: 12px;
+  padding: 10px 12px;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
 }
 
-.metric-card .label {
-  font-size: 11px;
+.kpi-label {
+  font-size: 10px;
   color: var(--text-muted);
-  margin-bottom: 4px;
+  text-transform: uppercase;
+  letter-spacing: 0.4px;
 }
 
-.metric-card .value {
-  font-size: 18px;
+.kpi-value {
+  font-size: 17px;
   font-weight: 700;
   color: var(--text);
   letter-spacing: -0.5px;
+  line-height: 1.2;
 }
 
-.metric-card .value.positive { color: var(--green); }
-.metric-card .value.warning  { color: var(--yellow); }
-.metric-card .value.negative { color: var(--red); }
+.kpi-delta {
+  font-size: 10px;
+  color: var(--text-dim);
+}
 
-.metric-skeleton {
+.kpi-delta.up { color: var(--green); }
+.kpi-delta.down { color: var(--red); }
+
+.kpi-skeleton {
   background: var(--bg-card);
   border: 1px solid var(--border);
   border-radius: var(--radius);
-  height: 60px;
+  height: 58px;
   animation: pulse 1.5s ease-in-out infinite;
+}
+
+.kpi-error {
+  grid-column: 1 / -1;
+  background: rgba(251,191,36,0.08);
+  border: 1px solid rgba(251,191,36,0.3);
+  border-radius: var(--radius);
+  padding: 10px 12px;
+  font-size: 11px;
+  color: var(--yellow);
+}
+
+.sync-status {
+  font-size: 11px;
+  color: var(--text-dim);
+  text-align: center;
+  padding-top: 4px;
+}
+
+.freshness {
+  font-size: 11px;
+  color: var(--text-dim);
+  margin-right: 8px;
 }
 
 @keyframes pulse {
   0%, 100% { opacity: 0.4; }
   50%       { opacity: 0.8; }
-}
-
-.brief-updated {
-  font-size: 11px;
-  color: var(--text-dim);
-  text-align: center;
-  padding-top: 8px;
 }
 
 /* ── Right panel ────────────────────────────────────────── */
@@ -187,10 +225,45 @@ html, body {
 }
 
 .message-sources {
-  font-size: 11px;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px;
+  margin-top: 8px;
+}
+
+.source-pill {
+  background: var(--bg-card);
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  padding: 2px 8px;
+  font-size: 10px;
   color: var(--text-dim);
-  margin-top: 6px;
-  padding-left: 4px;
+}
+
+.follow-ups {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  padding: 8px 0 4px;
+}
+
+.follow-up-btn {
+  background: transparent;
+  border: 1px solid var(--border);
+  border-radius: 16px;
+  padding: 5px 12px;
+  font-size: 12px;
+  color: var(--text-muted);
+  cursor: pointer;
+  font-family: var(--font);
+  transition: all 0.15s;
+  text-align: left;
+}
+
+.follow-up-btn:hover {
+  border-color: var(--accent);
+  color: var(--text);
+  background: var(--bg-card);
 }
 
 .message-content.thinking {
@@ -301,5 +374,5 @@ textarea::placeholder { color: var(--text-dim); }
     border-bottom: 1px solid var(--border);
     max-height: 280px;
   }
-  .metric-grid { grid-template-columns: repeat(4, 1fr); }
+  .kpi-grid { grid-template-columns: repeat(4, 1fr); }
 }
