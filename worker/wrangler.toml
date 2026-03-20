@@ -1,0 +1,9 @@
+name = "ghf-oracle"
+main = "src/index.ts"
+compatibility_date = "2024-11-01"
+account_id = "9ba35c84a3376810119e0d5a5f35b13c"
+
+[vars]
+SUPABASE_URL  = "https://yipjpkfqbyzjvliqtpua.supabase.co"
+CLAUDE_MODEL  = "claude-sonnet-4-6"
+OPENAI_EMBED_MODEL = "text-embedding-3-small"

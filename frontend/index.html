@@ -1,0 +1,99 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>GHF Oracle</title>
+  <link rel="stylesheet" href="style.css">
+</head>
+<body>
+  <div class="app">
+
+    <!-- Header -->
+    <header class="header">
+      <div class="header-left">
+        <span class="logo">GHF Oracle</span>
+        <span class="date" id="today-date"></span>
+      </div>
+      <div class="header-right">
+        <span class="status" id="status-dot">●</span>
+        <span class="status-text" id="status-text">Loading...</span>
+      </div>
+    </header>
+
+    <div class="main">
+
+      <!-- Left panel: metrics -->
+      <aside class="panel-left">
+        <section class="metric-section">
+          <h3>Yesterday — Shopify</h3>
+          <div class="metric-grid" id="shopify-metrics">
+            <div class="metric-skeleton"></div>
+            <div class="metric-skeleton"></div>
+            <div class="metric-skeleton"></div>
+            <div class="metric-skeleton"></div>
+          </div>
+        </section>
+
+        <section class="metric-section">
+          <h3>Yesterday — Meta Ads</h3>
+          <div class="metric-grid" id="meta-metrics">
+            <div class="metric-skeleton"></div>
+            <div class="metric-skeleton"></div>
+            <div class="metric-skeleton"></div>
+            <div class="metric-skeleton"></div>
+          </div>
+        </section>
+
+        <section class="metric-section">
+          <h3>7-Day — Meta Ads</h3>
+          <div class="metric-grid" id="meta-7d-metrics">
+            <div class="metric-skeleton"></div>
+            <div class="metric-skeleton"></div>
+          </div>
+        </section>
+
+        <div class="brief-updated" id="brief-updated"></div>
+      </aside>
+
+      <!-- Right panel: chat -->
+      <main class="panel-right">
+        <div class="chat-messages" id="chat-messages">
+          <div class="message assistant">
+            <div class="message-content">
+              Good morning. I'm the GHF Oracle — ask me anything about the business, today's data, or anything in our knowledge base.
+            </div>
+          </div>
+        </div>
+
+        <div class="chat-input-area">
+          <div class="suggested-questions" id="suggestions">
+            <button class="suggestion" onclick="askSuggestion(this)">What's our ROAS this week?</button>
+            <button class="suggestion" onclick="askSuggestion(this)">Top 5 products yesterday</button>
+            <button class="suggestion" onclick="askSuggestion(this)">Any risks to flag today?</button>
+            <button class="suggestion" onclick="askSuggestion(this)">Membership renewal trend</button>
+          </div>
+          <div class="input-row">
+            <textarea
+              id="question-input"
+              placeholder="Ask anything about GHF..."
+              rows="1"
+              onkeydown="handleKey(event)"
+              oninput="autoResize(this)"
+            ></textarea>
+            <button class="send-btn" id="send-btn" onclick="sendMessage()">
+              <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                <line x1="22" y1="2" x2="11" y2="13"></line>
+                <polygon points="22 2 15 22 11 13 2 9 22 2"></polygon>
+              </svg>
+            </button>
+          </div>
+        </div>
+      </main>
+
+    </div>
+  </div>
+
+  <script src="app.js"></script>
+</body>
+</html>
