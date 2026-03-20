@@ -52,6 +52,17 @@ export default {
         const data = await resp.json();
         return jsonResponse(data);
       }
+      if (url.pathname === "/api/debug-query" && request.method === "GET") {
+        const q = url.searchParams.get("q") || "cancellation rate";
+        const embedding = await embed(q, env);
+        const chunks = await matchChunks(embedding, 20, null, env);
+        return jsonResponse(chunks.map(c => ({
+          file: c.metadata.file_name,
+          label: c.metadata.folder_label,
+          similarity: c.similarity,
+          preview: c.content.slice(0, 200),
+        })));
+      }
       if (url.pathname === "/api/debug-brief" && request.method === "GET") {
         const briefChunks = await fetchChunksByLabel("daily_brief", 5, env);
         const fullText = briefChunks.map(c => c.content).join("\n");
