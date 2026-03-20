@@ -3,7 +3,7 @@
 
 const WORKER_URL = "https://ghf-oracle.mara-9ba.workers.dev";
 
-const conversationHistory = [];
+const conversationHistory = JSON.parse(sessionStorage.getItem("ghf_history") || "[]");
 
 // ---------------------------------------------------------------------------
 // Init
@@ -185,6 +185,7 @@ async function sendMessage() {
 
     // Keep history to last 10 turns
     if (conversationHistory.length > 20) conversationHistory.splice(0, 2);
+    sessionStorage.setItem("ghf_history", JSON.stringify(conversationHistory));
 
   } catch (e) {
     removeThinking(thinkingId);
