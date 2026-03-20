@@ -87,13 +87,22 @@ async function handleChat(request: Request, env: Env): Promise<Response> {
   const embedding = await embed(question, env);
 
   // 2. Retrieve relevant chunks — fetch more, then cap per document for diversity
-  const rawChunks = await matchChunks(embedding, 30, null, env);
+  const [rawChunks, briefChunks] = await Promise.all([
+    matchChunks(embedding, 30, null, env),
+    fetchChunksByLabel("daily_brief", 3, env),
+  ]);
+
+  // Cap at 3 chunks per document, exclude daily brief drive_file_ids (we'll pin them)
+  const briefIds = new Set(briefChunks.map(c => c.drive_file_id));
   const perDocCount: Record<string, number> = {};
-  const chunks = rawChunks.filter(c => {
-    const key = c.drive_file_id;
-    perDocCount[key] = (perDocCount[key] || 0) + 1;
-    return perDocCount[key] <= 3;
-  }).slice(0, 12);
+  const retrievedChunks = rawChunks.filter(c => {
+    if (briefIds.has(c.drive_file_id)) return false; // don't double-count brief
+    perDocCount[c.drive_file_id] = (perDocCount[c.drive_file_id] || 0) + 1;
+    return perDocCount[c.drive_file_id] <= 3;
+  }).slice(0, 10);
+
+  // Always pin the daily brief first so Claude always has current metrics
+  const chunks = [...briefChunks, ...retrievedChunks];
 
   // 3. Build context
   const context = chunks
@@ -260,6 +269,8 @@ When answering:
 - Frame everything through GHF's current focus: improving margins and efficiency.
 - Keep recommendations actionable for a 3-person team.
 - Ignore customer support email threads, phishing awareness templates, or copied communications — these are not operational risks.
+- For current metrics (revenue, orders, ROAS, memberships), prioritise the GHF Daily Brief as the primary source — it has yesterday, 7-day, and 30-day Shopify data.
+- For trends and deeper analysis, cross-reference GHF Daily Brief with GHF - Reports sheets.
 
 Today's date: ${new Date().toLocaleDateString("en-GB", { weekday: "long", year: "numeric", month: "long", day: "numeric" })}
 
