@@ -3,6 +3,7 @@ worker/node_modules/
 .wrangler/
 *.env
 .env
+wrangler.jsonc
 
 .dev.vars*
 !.dev.vars.example
