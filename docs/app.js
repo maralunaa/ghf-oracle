@@ -5,6 +5,8 @@ const WORKER_URL = "https://ghf-oracle.mara-9ba.workers.dev";
 
 const conversationHistory = JSON.parse(sessionStorage.getItem("ghf_history") || "[]");
 
+marked.setOptions({ breaks: true, gfm: true });
+
 // ---------------------------------------------------------------------------
 // Init
 // ---------------------------------------------------------------------------
@@ -202,9 +204,13 @@ function appendMessage(role, content, sources) {
   const div = document.createElement("div");
   div.className = `message ${role}`;
 
-  let html = `<div class="message-content">${escapeHtml(content)}</div>`;
+  const renderedContent = role === "assistant"
+    ? marked.parse(content)
+    : `<p>${escapeHtml(content)}</p>`;
+
+  let html = `<div class="message-content markdown">${renderedContent}</div>`;
   if (sources && sources.length > 0) {
-    html += `<div class="message-sources">${sources.map(s => `<span class="source-pill">${s}</span>`).join('')}</div>`;
+    html += `<div class="message-sources">${sources.map(s => `<span class="source-pill">${escapeHtml(s)}</span>`).join('')}</div>`;
   }
 
   div.innerHTML = html;
