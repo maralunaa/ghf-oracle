@@ -26,3 +26,12 @@ jobs:
         working-directory: worker
         env:
           CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+
+      - name: Re-set worker secrets
+        run: |
+          echo "${{ secrets.SUPABASE_SERVICE_KEY }}" | npx wrangler secret put SUPABASE_SERVICE_KEY --config wrangler.toml
+          echo "${{ secrets.OPENAI_API_KEY }}"       | npx wrangler secret put OPENAI_API_KEY       --config wrangler.toml
+          echo "${{ secrets.ANTHROPIC_API_KEY }}"    | npx wrangler secret put ANTHROPIC_API_KEY    --config wrangler.toml
+        working-directory: worker
+        env:
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}

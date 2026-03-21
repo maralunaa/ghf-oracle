@@ -99,16 +99,15 @@ async function handleChat(request: Request, env: Env): Promise<Response> {
 
   // 2. Retrieve relevant chunks
   // - Always pin the daily brief (current metrics)
-  // - Always fetch all report chunks (only ~200 chunks total — vector search
-  //   doesn't work well for date/metric queries across dense numeric data)
-  // - Vector search for everything else
-  const [rawChunks, briefChunks, reportChunks] = await Promise.all([
-    matchChunks(embedding, 50, null, env),
+  // - Vector search within reports label (row-per-chunk makes semantic search effective)
+  // - Vector search across all other docs
+  const [briefChunks, reportChunks, rawChunks] = await Promise.all([
     fetchChunksByLabel("daily_brief", 3, env),
-    fetchChunksByLabel("reports", 250, env),
+    matchChunks(embedding, 40, "reports", env),
+    matchChunks(embedding, 20, null, env),
   ]);
 
-  // From vector search: exclude brief + report chunks (already fetched above), cap 3 per doc
+  // From general search: exclude brief + report file IDs, cap 3 per doc
   const pinnedIds = new Set([
     ...briefChunks.map(c => c.drive_file_id),
     ...reportChunks.map(c => c.drive_file_id),
@@ -118,7 +117,7 @@ async function handleChat(request: Request, env: Env): Promise<Response> {
     if (pinnedIds.has(c.drive_file_id)) return false;
     perDocCount[c.drive_file_id] = (perDocCount[c.drive_file_id] || 0) + 1;
     return perDocCount[c.drive_file_id] <= 3;
-  }).slice(0, 8);
+  }).slice(0, 6);
 
   // Order: brief first (current data), then reports (historical), then other sources
   const chunks = [...briefChunks, ...reportChunks, ...otherChunks];
