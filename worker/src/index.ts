@@ -202,8 +202,11 @@ function parseKVLines(text: string): Record<string, string> {
 // ---------------------------------------------------------------------------
 
 async function fetchChunksByLabel(label: string, count: number, env: Env): Promise<Chunk[]> {
+  // Sort by ingested_at desc so we always get the most recently ingested document.
+  // This matters when a folder has a new file created each day (e.g. daily_brief):
+  // old files accumulate but we only want chunks from the latest one.
   const docsResp = await fetch(
-    `${env.SUPABASE_URL}/rest/v1/ghf_documents?select=drive_file_id&folder_label=eq.${encodeURIComponent(label)}`,
+    `${env.SUPABASE_URL}/rest/v1/ghf_documents?select=drive_file_id&folder_label=eq.${encodeURIComponent(label)}&order=ingested_at.desc`,
     { headers: { apikey: env.SUPABASE_SERVICE_KEY, Authorization: `Bearer ${env.SUPABASE_SERVICE_KEY}` } }
   );
   if (!docsResp.ok) {
@@ -216,7 +219,12 @@ async function fetchChunksByLabel(label: string, count: number, env: Env): Promi
     return [];
   }
 
-  const ids = docs.map(d => `"${d.drive_file_id}"`).join(",");
+  // Use only the most recently ingested document for single-file labels (brief, snapshots).
+  // For multi-file labels (reports), use all documents.
+  const singleFileLabels = new Set(["daily_brief", "snapshots", "org_context"]);
+  const selectedDocs = singleFileLabels.has(label) ? [docs[0]] : docs;
+  const ids = selectedDocs.map(d => `"${d.drive_file_id}"`).join(",");
+
   const chunksResp = await fetch(
     `${env.SUPABASE_URL}/rest/v1/ghf_chunks?select=id,drive_file_id,content,metadata&drive_file_id=in.(${ids})&limit=${count}&order=chunk_index.asc`,
     { headers: { apikey: env.SUPABASE_SERVICE_KEY, Authorization: `Bearer ${env.SUPABASE_SERVICE_KEY}` } }
@@ -321,7 +329,7 @@ async function callClaude(
     },
     body: JSON.stringify({
       model: env.CLAUDE_MODEL,
-      max_tokens: 800,
+      max_tokens: 900,
       system: SYSTEM_PROMPT,
       messages,
     }),
